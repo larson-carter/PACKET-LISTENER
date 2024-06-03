@@ -6,6 +6,7 @@
 #include <netinet/ip.h>      // Include for struct ip
 
 #define ICMP_ECHO_REQUEST 8
+#define MAX_TEXT_LENGTH 1024
 
 void process_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *packet) {
     struct ip *ip_hdr = (struct ip *)(packet + 14); // Assuming Ethernet header is 14 bytes
@@ -15,10 +16,10 @@ void process_packet(u_char *args, const struct pcap_pkthdr *header, const u_char
         return;
     }
 
-// Get the ICMP header
+    // Get the ICMP header
     struct icmp *icmp = (struct icmp *)(packet + 14 + ip_hdr->ip_hl * 4); // Skip Ethernet + IP headers
 
-// Check if the packet is an ICMP Echo Request (type 8)
+    // Check if the packet is an ICMP Echo Request (type 8)
     if (icmp->icmp_type == ICMP_ECHO_REQUEST) {
         // Extract payload data
         const u_char *icmp_payload_data;
@@ -31,8 +32,17 @@ void process_packet(u_char *args, const struct pcap_pkthdr *header, const u_char
             printf("%c", *(icmp_payload_data + i));
         }
         printf("\n");
-    }
 
+        // Concatenate received text chunks
+        char *received_text = (char *)args;
+        strncat(received_text, (char *)icmp_payload_data, data_length);
+
+        // Check if the received text contains "FLING-DONE"
+        if (strstr(received_text, "FLING-DONE") != NULL) {
+            // Stop listening
+            pcap_breakloop((pcap_t *)args);
+        }
+    }
 }
 
 int main(int argc, char *argv[]) {
@@ -66,11 +76,24 @@ int main(int argc, char *argv[]) {
         return 2;
     }
 
+    // Allocate memory to store received text
+    char received_text[MAX_TEXT_LENGTH] = "";
+
     // Start capturing packets
     printf("Listening on %s...\n", dev);
-    pcap_loop(handle, -1, process_packet, NULL);
+    pcap_loop(handle, -1, process_packet, (u_char *)handle);
 
     // Close the session
     pcap_close(handle);
+
+    // Remove "FLING-DONE" text from received text
+    char *fling_done_ptr = strstr(received_text, "FLING-DONE");
+    if (fling_done_ptr != NULL) {
+        *fling_done_ptr = '\0'; // Terminate the string at the "FLING-DONE" position
+    }
+
+    // Print the concatenated text without "FLING-DONE"
+    printf("Received Text: %s\n", received_text);
+
     return 0;
 }
