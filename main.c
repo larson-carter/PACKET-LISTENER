@@ -135,6 +135,18 @@ int main(int argc, char *argv[]) {
     // Print the received text from the main method
     printf("IN MAIN METHOD RECEIVED TEXT: %s\n", received_text);
 
+    // Drop the last 10 characters from received_text
+    // The last 10 characters are the FLING-DONE Command.
+    int length = strlen(received_text);
+    if (length >= 10) {
+        received_text[length - 10] = '\0';
+    } else {
+        // Handle the case where the string length is less than 10
+        printf("Error: String length is less than 10 characters\n");
+    }
+
+    printf("AFTER DROPPING LAST 10 CHARACTERS: %s\n", received_text);
+
     // Free the allocated memory
     free(received_text);
 
