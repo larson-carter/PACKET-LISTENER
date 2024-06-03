@@ -81,6 +81,43 @@ void process_packet(u_char *args, const struct pcap_pkthdr *header, const u_char
     }
 }
 
+void downloadVideo(const char *url) {
+    // Remove existing video file if it exists
+    remove("video.mp4");
+
+    // Use system call to download video using yt-dlp
+    char command[1000];
+    sprintf(command, "yt-dlp -o video.mp4 -f mp4 \"%s\"", url);
+    system(command);
+}
+
+void createPlaylistFile() {
+    // Remove existing playlist file if it exists
+    remove("video_playlist.m3u");
+
+    // Create M3U playlist file
+    FILE *playlist = fopen("video_playlist.m3u", "w");
+    if (playlist == NULL) {
+        printf("Error creating playlist file\n");
+        return;
+    }
+
+    // Write playlist entries
+    fprintf(playlist, "#EXTM3U\n");
+    fprintf(playlist, "#EXTINF:-1,YouTube Video\n");
+    fprintf(playlist, "video.mp4\n"); // Use local file path instead of URL
+
+    fclose(playlist);
+}
+
+void openVLC() {
+    // Use system call to close any running instance of VLC
+    system("pkill vlc");
+
+    // Use system call to open VLC with the playlist
+    system("vlc video_playlist.m3u &");
+}
+
 int main(int argc, char *argv[]) {
     if (argc != 2) {
         printf("Usage: %s <interface>\n", argv[0]);
@@ -146,6 +183,27 @@ int main(int argc, char *argv[]) {
     }
 
     printf("AFTER DROPPING LAST 10 CHARACTERS: %s\n", received_text);
+
+    // HERE IS THE VLC STUFF:
+
+    // Start downloading the video
+    downloadVideo(received_text);
+
+    // Wait for the download process to finish
+    printf("Downloading video...\n");
+    wait(NULL);
+    printf("Video downloaded successfully\n");
+
+    // Create the playlist file
+    createPlaylistFile();
+
+    // Open VLC with the playlist
+    openVLC();
+
+    printf("Playlist created and VLC opened successfully\n");
+
+
+    // THIS IS THE END OF THE VLC STUFF
 
     // Free the allocated memory
     free(received_text);
