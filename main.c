@@ -2,13 +2,18 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <netinet/ip_icmp.h> // Include for struct icmphdr
-#include <netinet/ip.h>      // Include for struct ip
+#include <netinet/ip_icmp.h>
+#include <netinet/ip.h>
 
 #define ICMP_ECHO_REQUEST 8
 #define MAX_TEXT_LENGTH 1024
 
+// Global flag variable to indicate when to stop listening
+int stop_listening = 0;
+
 void process_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *packet) {
+    char *received_text = (char *)args;
+
     struct ip *ip_hdr = (struct ip *)(packet + 14); // Assuming Ethernet header is 14 bytes
 
     // Ensure the packet is an ICMP packet
@@ -34,13 +39,44 @@ void process_packet(u_char *args, const struct pcap_pkthdr *header, const u_char
         printf("\n");
 
         // Concatenate received text chunks
-        char *received_text = (char *)args;
-        strncat(received_text, (char *)icmp_payload_data, data_length);
+        printf("PING PONG\n");
+        printf("received_text: %s\n", received_text); // Debugging output
+
+        // Ensure received_text is properly initialized
+        if (received_text == NULL) {
+            // Allocate memory for received_text
+            received_text = malloc(MAX_TEXT_LENGTH);
+            if (received_text == NULL) {
+                // Handle allocation failure
+                printf("Error: Failed to allocate memory for received_text\n");
+                return;
+            }
+            // Null terminate the string
+            received_text[0] = '\0';
+        }
+
+        // Calculate remaining space in received_text buffer
+        int remaining_space = MAX_TEXT_LENGTH - strlen(received_text) - 1; // -1 for null terminator
+        if (remaining_space <= 0) {
+            // Handle buffer overflow
+            printf("Error: Insufficient space in received_text buffer\n");
+            return;
+        }
+
+        // Determine how much data to copy
+        int copy_length = remaining_space < data_length ? remaining_space : data_length;
+
+        // Copy data to received_text
+        strncpy(received_text + strlen(received_text), (char *)icmp_payload_data, copy_length);
+        received_text[strlen(received_text) + copy_length] = '\0'; // Null terminate the string
+
+        printf("Concatenated Text: %s\n", received_text); // Debugging output
 
         // Check if the received text contains "FLING-DONE"
         if (strstr(received_text, "FLING-DONE") != NULL) {
-            // Stop listening
-            pcap_breakloop((pcap_t *)args);
+            printf("Received Text in process_packet: %s\n", received_text);
+            // Set the flag to stop listening
+            stop_listening = 1;
         }
     }
 }
@@ -77,23 +113,30 @@ int main(int argc, char *argv[]) {
     }
 
     // Allocate memory to store received text
-    char received_text[MAX_TEXT_LENGTH] = "";
+    char *received_text = malloc(MAX_TEXT_LENGTH);
+    if (received_text == NULL) {
+        fprintf(stderr, "Failed to allocate memory for received_text\n");
+        pcap_close(handle);
+        return 2;
+    }
+
+    // Ensure the received_text buffer is properly initialized
+    received_text[0] = '\0';
 
     // Start capturing packets
     printf("Listening on %s...\n", dev);
-    pcap_loop(handle, -1, process_packet, (u_char *)handle);
+    while (!stop_listening) {
+        pcap_dispatch(handle, 1, process_packet, (u_char *)received_text);
+    }
 
     // Close the session
     pcap_close(handle);
 
-    // Remove "FLING-DONE" text from received text
-    char *fling_done_ptr = strstr(received_text, "FLING-DONE");
-    if (fling_done_ptr != NULL) {
-        *fling_done_ptr = '\0'; // Terminate the string at the "FLING-DONE" position
-    }
+    // Print the received text from the main method
+    printf("IN MAIN METHOD RECEIVED TEXT: %s\n", received_text);
 
-    // Print the concatenated text without "FLING-DONE"
-    printf("Received Text: %s\n", received_text);
+    // Free the allocated memory
+    free(received_text);
 
     return 0;
 }
